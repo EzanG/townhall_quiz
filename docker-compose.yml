@@ -1,0 +1,25 @@
+# 在 Linux 主机上：复制项目后执行
+#   export ADMIN_KEY=你的强密钥
+#   docker compose up -d --build
+# 浏览器访问 http://服务器IP:3000
+
+services:
+  townhall-quiz:
+    build: .
+    image: townhall-quiz:latest
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    environment:
+      ADMIN_KEY: ${ADMIN_KEY:-change-me-before-event}
+      # 设为 "true" 时校验场控 API 的 x-admin-key（须与 ADMIN_KEY 一致）
+      # ADMIN_STRICT: "true"
+      NODE_ENV: production
+      PORT: "3000"
+      # 数据库落在卷中，容器重建不丢进度；与 src/lib/db.ts 默认一致
+      DATABASE_PATH: /app/data/quiz.db
+    volumes:
+      - quiz_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  quiz_data:

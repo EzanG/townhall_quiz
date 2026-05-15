@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.gitignore
+*.md
+!readme.md
+data
+*.log
+.env
+.env.local
+.env.*.local
+.DS_Store
+terminals
+**/*.db
+**/*.db-*

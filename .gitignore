@@ -1,0 +1,11 @@
+node_modules/
+package-lock.json
+npm-shrinkwrap.json
+.pnpm-store/
+.next/
+data/*.db
+data/*.db-*
+.env
+.env.local
+*.log
+.DS_Store

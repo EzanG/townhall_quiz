@@ -1,0 +1,52 @@
+[
+  {
+    "stem": "常说的「大语言模型」英文缩写 LLM 通常指什么来着？",
+    "options": {
+      "A": "Large Language Model（大规模语言模型）",
+      "B": "Low Level Machine（底层机器）",
+      "C": "Linear Learning Method（线性学习方法）",
+      "D": "Local Logic Module（本地逻辑模块）"
+    },
+    "correct": "A"
+  },
+  {
+    "stem": "2017 年论文《Attention Is All You Need》主要提出了哪种网络结构？",
+    "options": {
+      "A": "CNN",
+      "B": "RNN",
+      "C": "Transformer",
+      "D": "GAN"
+    },
+    "correct": "C"
+  },
+  {
+    "stem": "训练与推理大型生成式模型时，最常强调的硬件加速器类型是？",
+    "options": {
+      "A": "机械硬盘 RAID",
+      "B": "GPU / 类 GPU 加速器",
+      "C": "普通办公网卡",
+      "D": "USB 集线器"
+    },
+    "correct": "B"
+  },
+  {
+    "stem": "「幻觉」在生成式 AI 语境下一般指什么？",
+    "options": {
+      "A": "模型输出看似合理但与事实不符的内容",
+      "B": "显示器分辨率不足",
+      "C": "训练数据量太大",
+      "D": "用户输入太短"
+    },
+    "correct": "A"
+  },
+  {
+    "stem": "RAG（Retrieval-Augmented Generation）的主要思路是？",
+    "options": {
+      "A": "完全随机生成答案",
+      "B": "只用规则引擎不写模型",
+      "C": "结合检索到的资料再让模型生成回答",
+      "D": "把模型体积压缩到 1MB 以内"
+    },
+    "correct": "C"
+  }
+]
