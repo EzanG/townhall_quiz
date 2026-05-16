@@ -89,7 +89,7 @@ pnpm start
 |------|------|
 | `ADMIN_KEY` | 主持调 API 时浏览器里保存的密钥应与之一致；正式活动务必改为强随机串 |
 | `ADMIN_STRICT` | 可选，设为 `true` 时服务端校验 `x-admin-key` 与 `ADMIN_KEY` 一致（见 compose 内注释示例） |
-| `HOST_PORT` | 可选，主机映射端口，默认 `3000` |
+| `PORT` | 可选，**主机映射与容器内监听同一端口**（与 `.env` / `server.ts` 一致），默认 `3000` |
 
 示例：
 
@@ -102,7 +102,7 @@ docker compose up -d --build
 
 ```env
 ADMIN_KEY=你的强密钥
-HOST_PORT=3000
+PORT=3000
 ```
 
 ### 2. 构建与启动
@@ -113,8 +113,10 @@ docker compose up -d --build
 
 指定主机端口：
 
+在 `.env` 中设置 `PORT=8080` 后执行 `docker compose up -d --build`；或单次覆盖：
+
 ```bash
-HOST_PORT=8080 docker compose up -d --build
+PORT=8080 docker compose up -d --build
 ```
 
 ### 3. 数据持久化
@@ -135,7 +137,7 @@ HOST_PORT=8080 docker compose up -d --build
 生产建议在容器前加 **Nginx / Caddy**：
 
 - 对外 `443` TLS
-- 将 HTTP(S) 反代到 `http://127.0.0.1:HOST_PORT`
+- 将 HTTP(S) 反代到 `http://127.0.0.1:PORT`（与 `.env` 中 `PORT` 一致）
 - **必须**允许 WebSocket 升级：Socket.io 使用路径 **`/api/socket`**（与 `server.ts` 中 `path` 一致）
 
 示例（Nginx）要点：`proxy_http_version 1.1`、`Upgrade` / `Connection` 头、`proxy_read_timeout` 适当加大。
