@@ -11,8 +11,8 @@ services:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:
       ADMIN_KEY: ${ADMIN_KEY:-change-me-before-event}
-      # 设为 "true" 时校验场控 API 的 x-admin-key（须与 ADMIN_KEY 一致）
-      # ADMIN_STRICT: "true"
+      # 默认开启校验；彩排可在 .env 中设 ADMIN_STRICT=false
+      ADMIN_STRICT: ${ADMIN_STRICT:-true}
       NODE_ENV: production
       PORT: ${PORT:-3000}
       # 数据库落在卷中，容器重建不丢进度；与 src/lib/db.ts 默认一致

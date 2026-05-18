@@ -25,6 +25,10 @@ export function getQuestionsList(): Question[] {
   return loadFromDisk();
 }
 
+export function getQuestionCount(): number {
+  return loadFromDisk().length;
+}
+
 export function getQuestion(index: number): Question | null {
   const questions = loadFromDisk();
   if (index < 1 || index > questions.length) return null;

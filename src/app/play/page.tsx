@@ -5,7 +5,9 @@ import { Countdown } from "@/components/Countdown";
 import { useAppState } from "@/hooks/useAppState";
 import type { PlayerPublic } from "@/lib/game";
 import { isAnswerPhase } from "@/lib/gamePhase";
-import { getSeat } from "@/lib/seats";
+import { useSeatsLayout } from "@/hooks/useSeatsLayout";
+import { getSeatFromLayout } from "@/lib/seats";
+import { useEliminationSoundOnSelf } from "@/hooks/useEliminationSound";
 import { normalizeSeatId } from "@/lib/normalizeSeat";
 import { zh } from "@/lib/zh";
 
@@ -26,6 +28,7 @@ function quizStarted(game: { currentQ: number; phase: string } | undefined) {
 
 export default function ParticipantPage() {
   const { state } = useAppState();
+  const { layout: seatsLayout } = useSeatsLayout();
   const [token, setToken] = useState<string | null>(null);
   const [seatIdInput, setSeatIdInput] = useState("");
   const [name, setName] = useState("");
@@ -37,7 +40,6 @@ export default function ParticipantPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
-
   useEffect(() => {
     setSelectedChoice(null);
   }, [state?.game.currentQ]);
@@ -87,6 +89,8 @@ export default function ParticipantPage() {
     player?.status === "live" &&
     !player?.submittedThisRound;
 
+  useEliminationSoundOnSelf(player);
+
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     const sid = normalizeSeatId(seatIdInput);
@@ -98,7 +102,7 @@ export default function ParticipantPage() {
       setError(zh.errSeatRequired);
       return;
     }
-    if (!getSeat(sid)) {
+    if (!seatsLayout || !getSeatFromLayout(seatsLayout, sid)) {
       setError(zh.errInvalidSeatClient);
       return;
     }
@@ -132,7 +136,21 @@ export default function ParticipantPage() {
     }
   }
 
-  function handleLogout() {
+  const allowReregister = state?.game.debugReregister === true;
+
+  async function handleLogout() {
+    if (!allowReregister) return;
+    if (token) {
+      try {
+        await fetch("/api/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+      } catch {
+        /* 仍清除本机登录态 */
+      }
+    }
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(SEAT_KEY);
     setToken(null);
@@ -239,13 +257,15 @@ export default function ParticipantPage() {
               </span>
             )}
           </p>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="text-sm text-amber-400 underline"
-          >
-            {zh.btnLeaveRebind}
-          </button>
+          {allowReregister && (
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="text-sm text-amber-400 underline"
+            >
+              {zh.btnLeaveRebind}
+            </button>
+          )}
         </div>
 
         {!started && (
@@ -288,8 +308,8 @@ export default function ParticipantPage() {
               <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
                 <p className="mb-4 text-base font-medium">{question.stem}</p>
                 {phase === "closed" && (
-                  <p className="mb-3 text-sm text-slate-400">
-                    {zh.playWaitStartAnswering}
+                  <p className="mb-3 text-sm text-amber-400/90">
+                    {zh.playCountdownEnded}
                   </p>
                 )}
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { login } from "@/lib/game";
-import { getSeat } from "@/lib/seats";
+import { getSeat } from "@/lib/seats-server";
 import { normalizeSeatId } from "@/lib/normalizeSeat";
 import { zh } from "@/lib/zh";
 

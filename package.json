@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "cross-env NODE_ENV=production tsx server.ts",
     "lint": "next lint",
-    "db:generate": "node scripts/generate-seats.mjs",
+    "db:generate": "tsx scripts/generate-seats.ts",
     "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {

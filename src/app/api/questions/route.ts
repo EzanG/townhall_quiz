@@ -4,7 +4,7 @@ import {
   parseQuestionsJson,
   writeQuestionsToDisk,
 } from "@/lib/questions";
-import { verifyAdminKey } from "@/lib/game";
+import { verifyAdminKey } from "@/lib/admin-auth";
 import { zh } from "@/lib/zh";
 
 export async function GET(req: Request) {

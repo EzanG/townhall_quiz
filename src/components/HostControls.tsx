@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getStoredAdminKey } from "@/lib/admin-client";
 import { zh } from "@/lib/zh";
 
-const ADMIN_KEY_STORAGE = "quiz_admin_key";
+type AdminAuthStatus = { strict: boolean; keyConfigured: boolean };
 
 async function admin(
   key: string,
@@ -18,7 +20,7 @@ async function admin(
     },
     body: JSON.stringify({ action, ...extra }),
   });
-  return res.json();
+  return { status: res.status, data: await res.json() };
 }
 
 type Props = {
@@ -28,21 +30,51 @@ type Props = {
 
 export function HostControls({ layout = "horizontal" }: Props) {
   const [msg, setMsg] = useState("");
+  const [msgIsError, setMsgIsError] = useState(false);
+  const [auth, setAuth] = useState<AdminAuthStatus | null>(null);
   const rail = layout === "rail";
 
-  function getKey() {
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem(ADMIN_KEY_STORAGE) || "";
-  }
+  useEffect(() => {
+    fetch("/api/admin")
+      .then((r) => r.json())
+      .then((data: AdminAuthStatus) => setAuth(data))
+      .catch(() => setAuth(null));
+  }, []);
 
-  async function run(action: string, extra?: { timerSec?: number }) {
-    const data = await admin(getKey(), action, extra);
-    setMsg(typeof data.error === "string" ? data.error : zh.hostDone(action));
+  const needsKey =
+    auth?.strict === true && auth.keyConfigured && !getStoredAdminKey();
+
+  async function run(
+    action: string,
+    extra?: { timerSec?: number },
+    successMsg?: string
+  ) {
+    const key = getStoredAdminKey();
+    if (auth?.strict && auth.keyConfigured && !key) {
+      setMsgIsError(true);
+      setMsg(zh.hostAdminKeyMissing);
+      return;
+    }
+
+    const { status, data } = await admin(key, action, extra);
+    if (status === 403 || data.error === zh.apiForbidden) {
+      setMsgIsError(true);
+      setMsg(zh.hostAdminKeyForbidden);
+      return;
+    }
+    setMsgIsError(typeof data.error === "string");
+    setMsg(
+      typeof data.error === "string"
+        ? data.error
+        : (successMsg ?? zh.hostDone(action))
+    );
   }
 
   const btn = rail
     ? "w-full justify-center rounded-md px-3 py-2 text-sm"
     : "rounded-md px-3 py-1.5 text-sm";
+
+  const msgClass = msgIsError ? "text-amber-400" : "text-slate-500";
 
   return (
     <div
@@ -52,6 +84,14 @@ export function HostControls({ layout = "horizontal" }: Props) {
           : "flex flex-wrap items-center gap-2 rounded-lg border border-slate-800/80 bg-slate-900/40 px-3 py-2"
       }
     >
+      {needsKey && (
+        <p className={`text-xs text-amber-400 ${rail ? "text-center" : "w-full"}`}>
+          {zh.hostAdminKeyMissing}{" "}
+          <Link href="/settings" className="underline hover:text-amber-300">
+            {zh.settingsTitle}
+          </Link>
+        </p>
+      )}
       <button
         type="button"
         onClick={() => run("lobby")}
@@ -76,6 +116,17 @@ export function HostControls({ layout = "horizontal" }: Props) {
       <button
         type="button"
         onClick={() => {
+          if (window.confirm(zh.hostConfirmResetQuestions)) {
+            run("reset-questions", undefined, zh.hostResetQuestionsDone);
+          }
+        }}
+        className={`${btn} bg-amber-800 hover:bg-amber-700`}
+      >
+        {zh.hostResetQuestions}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
           if (window.confirm(zh.hostConfirmReset)) run("reset-players");
         }}
         className={`${btn} bg-red-900 hover:bg-red-800`}
@@ -84,9 +135,21 @@ export function HostControls({ layout = "horizontal" }: Props) {
       </button>
       {msg && (
         <span
-          className={rail ? "text-center text-xs text-slate-500" : "w-full text-xs text-slate-500 sm:w-auto sm:pl-2"}
+          className={
+            rail
+              ? `text-center text-xs ${msgClass}`
+              : `w-full text-xs sm:w-auto sm:pl-2 ${msgClass}`
+          }
         >
           {msg}
+          {msgIsError && (
+            <>
+              {" "}
+              <Link href="/settings" className="underline hover:text-amber-300">
+                {zh.settingsTitle}
+              </Link>
+            </>
+          )}
         </span>
       )}
     </div>

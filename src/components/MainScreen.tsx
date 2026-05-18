@@ -1,14 +1,41 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { SeatMap } from "@/components/SeatMap";
 import { HomeRightSidebar } from "@/components/HomeRightSidebar";
 import { LeaderboardAside } from "@/components/LeaderboardAside";
 import { useAppState } from "@/hooks/useAppState";
+import { useEliminationSoundOnNewlyOut } from "@/hooks/useEliminationSound";
 import { isAnswerPhase } from "@/lib/gamePhase";
 import { zh } from "@/lib/zh";
 
 export function MainScreen() {
   const { state, connected } = useAppState();
+  const [questionTotalFallback, setQuestionTotalFallback] = useState<
+    number | null
+  >(null);
+
+  useEffect(() => {
+    if (state && typeof state.questionTotal === "number") {
+      setQuestionTotalFallback(null);
+      return;
+    }
+    fetch("/api/questions/count")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { count?: number } | null) => {
+        if (data && typeof data.count === "number") {
+          setQuestionTotalFallback(data.count);
+        }
+      })
+      .catch(() => {});
+  }, [state?.questionTotal, state?.game.currentQ]);
+
+  const questionTotal =
+    typeof state?.questionTotal === "number"
+      ? state.questionTotal
+      : questionTotalFallback;
+
+  useEliminationSoundOnNewlyOut(state?.players);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
@@ -16,7 +43,22 @@ export function MainScreen() {
         <h1 className="text-balance text-lg font-bold leading-snug sm:text-xl md:text-2xl">
           {zh.appTitle}
         </h1>
-
+        {state && (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm font-medium text-amber-400/95 sm:text-base">
+              {state.game.currentQ > 0
+                ? typeof questionTotal === "number"
+                  ? zh.mainCurrentQuestion(state.game.currentQ, questionTotal)
+                  : zh.mainCurrentQuestionOnly(state.game.currentQ)
+                : zh.mainNoQuestion}
+            </p>
+            {state.game.currentQ > 0 && state.question?.stem && (
+              <p className="mx-auto max-w-4xl text-pretty text-sm leading-relaxed text-slate-300 sm:text-base">
+                {state.question.stem}
+              </p>
+            )}
+          </div>
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">

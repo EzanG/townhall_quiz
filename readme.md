@@ -6,7 +6,7 @@
 
 | 页面 | 路径 | 说明 |
 |------|------|------|
-| **大屏 + 场控（PC）** | `/` | 座位图、排行榜、倒计时、主持按钮、手机参与二维码；场控密钥默认不强制校验（见环境变量） |
+| **大屏 + 场控（PC）** | `/` | 座位图、排行榜、倒计时、主持按钮、手机参与二维码；场控密钥默认校验（见环境变量） |
 | **手机参与** | `/play` | 登记（姓名 + 座位号如 `8-15`）+ 答题；可选选项后提交 |
 | **参数设置** | `/settings` | 手机参与页完整 URL（二维码）、默认倒计时秒数、`ADMIN_KEY` 存浏览器 |
 | 兼容跳转 | `/join`、`/host`、`/display` | 分别重定向到 `/play` 或 `/` |
@@ -87,8 +87,8 @@ pnpm start
 
 | 变量 | 说明 |
 |------|------|
-| `ADMIN_KEY` | 主持调 API 时浏览器里保存的密钥应与之一致；正式活动务必改为强随机串 |
-| `ADMIN_STRICT` | 可选，设为 `true` 时服务端校验 `x-admin-key` 与 `ADMIN_KEY` 一致（见 compose 内注释示例） |
+| `ADMIN_KEY` | 服务端场控密钥；浏览器 `/settings` 中须填写相同值；正式活动务必改为强随机串 |
+| `ADMIN_STRICT` | 可选，默认开启校验；彩排可设 `false` 关闭 |
 | `PORT` | 可选，**主机映射与容器内监听同一端口**（与 `.env` / `server.ts` 一致），默认 `3000` |
 
 示例：
@@ -158,14 +158,14 @@ docker volume rm <你的项目生成的卷名>
 |------|------|
 | 大屏一直「断开」 | 检查反代是否放行 WebSocket；浏览器控制台 Network 是否连上 `/api/socket` |
 | 手机扫二维码打不开 | 在 `/settings` 填写手机能访问的 **公网或内网 http(s)://主机:端口/play** |
-| 场控 403 | 设置 `ADMIN_STRICT=true` 时，请求头 `x-admin-key` 须与容器环境变量 `ADMIN_KEY` 一致 |
+| 场控 403 | 请求头 `x-admin-key` 须与容器环境变量 `ADMIN_KEY` 一致（可在 `/settings` 保存）；彩排可设 `ADMIN_STRICT=false` |
 
 ## 环境变量（`.env.local` / 容器）
 
 | 变量 | 说明 |
 |------|------|
-| `ADMIN_KEY` | 在 `ADMIN_STRICT=true` 时用于校验场控请求头 `x-admin-key` |
-| `ADMIN_STRICT` | 可选，设为 `true` 启用场控密钥校验；**默认不校验**，便于彩排 |
+| `ADMIN_KEY` | 校验场控请求头 `x-admin-key`；须与 `/settings` 中保存的密钥一致 |
+| `ADMIN_STRICT` | 可选，**默认开启**；设为 `false` 可关闭校验（彩排） |
 | `PORT` | 可选，默认 `3000` |
 | `DATABASE_PATH` | 可选，SQLite 文件路径；Docker 内默认 `/app/data/quiz.db` |
 | `HOSTNAME` | 可选，`server.ts` 监听日志用，默认 `localhost` |
@@ -187,15 +187,14 @@ docker volume rm <你的项目生成的卷名>
 | phase | 含义 |
 |-------|------|
 | `lobby` | 仅登记，未开始本题 |
-| `countdown` | 同步倒计时；**可与 `open` 一样提交答案**（计时从主持「开始作答」起算） |
-| `open` | 倒计时已结束或仍在作答窗口内，仍可提交 |
-| `closed` | 本轮已切题或等待主持「下一题」后的静止态 |
+| `countdown` | 同步倒计时；**仅在此阶段可提交答案**（计时从主持「开始作答」起算） |
+| `open` | 保留字段；当前流程不再进入（倒计时结束直接进入 `closed`） |
+| `closed` | 倒计时已结束或主持切题后；**不可提交** |
 
 ## 会场座位
 
-- 14 行 × 20 列 = 280 座
-- 第 1–8 排为前区，第 9–14 排为后区（中间横过道）
-- 第 1–10 列为左侧，第 11–20 列为右侧（中间纵过道）
+- 默认 14 行 × 20 列；行数 **上下等分**（如 12 行则上 6 / 下 6，中间横过道）
+- 列数左右等分（中间纵过道）
 
 重新生成布局：`pnpm run db:generate`
 
@@ -220,7 +219,11 @@ docker volume rm <你的项目生成的卷名>
 | GET | `/api/state` | 全场状态（与 Socket `state:update` 结构一致） |
 | POST | `/api/login` | 登录 `{ seatId, name, employeeId? }` |
 | POST | `/api/answer` | 提交答案 `{ token, choice }` |
-| POST | `/api/admin` | 主持控制 JSON `{ action, ... }`，可选头 `x-admin-key` |
+| GET | `/api/seats` | 会场座位布局（行列、SVG 坐标） |
+| PUT | `/api/seats` | 按 `{ rows, cols }` 重新生成布局（需 `x-admin-key`） |
+| GET | `/api/admin` | 场控校验状态 `{ strict, keyConfigured }` |
+| HEAD | `/api/admin` | 探测 `x-admin-key` 是否有效（204/403） |
+| POST | `/api/admin` | 主持控制 JSON `{ action, ... }`，头 `x-admin-key`（默认须与 `ADMIN_KEY` 一致） |
 
 Socket：连接后监听 `state:update`。
 
@@ -231,6 +234,8 @@ Socket：连接后监听 `state:update`。
 3. 可选 **Nginx** 反代到 80/443，并放行 **WebSocket**（`/api/socket`）。
 4. 手机参与地址：大屏侧二维码指向 **`/play`**（在 `/settings` 配置完整 URL）。
 5. 彩排清空参与者：主持「重置玩家」或删除数据库文件 / Docker 卷后重启。
+6. 从第 1 题重来：主持「重置题目」（保留玩家与累计答对，仅回到第 1 题并清除本轮提交状态），再点「开始作答」。
+7. 彩排允许多次登记：在 `/settings` 开启「调试：允许重新登记」并保存（需场控密钥）；关闭后参与者仅可登记一次，且不显示「退出并重新登记」。
 
 ## 目录结构
 

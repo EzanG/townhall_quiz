@@ -5,8 +5,15 @@ import { v4 as uuidv4 } from "uuid";
 import { zh } from "./zh";
 import { sqlite } from "./db";
 import { isAnswerPhase } from "./gamePhase";
-import { getQuestion } from "./questions";
+import { getQuestion, getQuestionCount } from "./questions";
 import type { GamePhase, GameRow, PlayerRow } from "./schema";
+import { verifyAdminKey } from "@/lib/admin-auth";
+import {
+  isDebugReregisterEnabled,
+  setDebugReregister,
+} from "@/lib/debug-config";
+
+export { verifyAdminKey } from "@/lib/admin-auth";
 
 export type PlayerPublic = {
   seatId: string;
@@ -22,6 +29,8 @@ export type GamePublic = {
   timerSec: number;
   currentQ: number;
   countdownEnd: string | null;
+  /** 调试：允许参与者退出并重新登记 */
+  debugReregister: boolean;
 };
 
 export type Stats = {
@@ -47,6 +56,7 @@ export type AppState = {
   players: PlayerPublic[];
   stats: Stats;
   question: ReturnType<typeof getQuestion>;
+  questionTotal: number;
   leaderboard: LeaderboardEntry[];
 };
 
@@ -56,16 +66,17 @@ function getGameRow(): GameRow | undefined {
     .get() as GameRow | undefined;
 }
 
-/** 倒计时结束后自动进入 `open`；`opened_at` 在主持「开始作答」时已写入，此处不覆盖（用于累计答题耗时）。 */
-function advanceCountdownIfExpired(): void {
+/** 倒计时结束后进入 `closed`，禁止再提交；`opened_at` 保留供耗时统计。 */
+function advanceCountdownIfExpired(): boolean {
   const g = getGameRow();
-  if (!g || g.phase !== "countdown" || !g.countdown_end) return;
-  if (new Date(g.countdown_end).getTime() > Date.now()) return;
+  if (!g || g.phase !== "countdown" || !g.countdown_end) return false;
+  if (new Date(g.countdown_end).getTime() > Date.now()) return false;
   sqlite
     .prepare(
-      "UPDATE game SET phase = 'open', countdown_end = NULL WHERE id = 1"
+      "UPDATE game SET phase = 'closed', countdown_end = NULL WHERE id = 1"
     )
     .run();
+  return true;
 }
 
 function getAllPlayers(): PlayerRow[] {
@@ -136,6 +147,7 @@ export async function getAppState(): Promise<AppState> {
     timerSec: g?.timer_sec ?? 30,
     currentQ: g?.current_q ?? 0,
     countdownEnd: g?.countdown_end ?? null,
+    debugReregister: isDebugReregisterEnabled(),
   };
 
   return {
@@ -144,6 +156,7 @@ export async function getAppState(): Promise<AppState> {
     stats: computeStats(players),
     question:
       gamePublic.currentQ > 0 ? getQuestion(gamePublic.currentQ) : null,
+    questionTotal: getQuestionCount(),
     leaderboard: computeLeaderboard(),
   };
 }
@@ -160,6 +173,21 @@ async function broadcast() {
   }
 }
 
+export async function logoutPlayer(
+  token: string
+): Promise<{ ok: true } | { error: string }> {
+  if (!isDebugReregisterEnabled()) {
+    return { error: zh.apiReregisterDisabled };
+  }
+  const p = sqlite
+    .prepare("SELECT seat_id FROM player WHERE token = ?")
+    .get(token);
+  if (!p) return { error: zh.apiInvalidSession };
+  sqlite.prepare("DELETE FROM player WHERE token = ?").run(token);
+  await broadcast();
+  return { ok: true };
+}
+
 export async function login(params: {
   seatId: string;
   name: string;
@@ -169,7 +197,12 @@ export async function login(params: {
     .prepare("SELECT seat_id FROM player WHERE seat_id = ?")
     .get(params.seatId);
   if (existing) {
-    return { error: zh.apiSeatTaken };
+    if (!isDebugReregisterEnabled()) {
+      return { error: zh.apiSeatTaken };
+    }
+    sqlite
+      .prepare("DELETE FROM player WHERE seat_id = ?")
+      .run(params.seatId);
   }
 
   const token = uuidv4();
@@ -193,7 +226,7 @@ export async function login(params: {
 }
 
 /**
- * 在 countdown / open 阶段各可提交一次。
+ * 仅在 `countdown` 阶段可提交一次；倒计时结束自动 `closed` 并拒绝迟交。
  * 答对时把「主持点开始作答 → 此刻」的毫秒差累加到 `total_correct_time_ms`（排行榜同分比该累计值）。
  */
 export async function submitAnswer(
@@ -203,6 +236,11 @@ export async function submitAnswer(
   | { ok: true; correct: boolean; correctCount: number; eliminated: boolean }
   | { error: string }
 > {
+  if (advanceCountdownIfExpired()) {
+    await broadcast();
+    return { error: zh.apiCountdownEnded };
+  }
+
   const p = sqlite
     .prepare("SELECT * FROM player WHERE token = ?")
     .get(token) as PlayerRow | undefined;
@@ -259,28 +297,12 @@ export async function submitAnswer(
   };
 }
 
-function requireAdmin(adminKey: string | null): boolean {
-  // Default: no strict check so local dev / rehearsal works without typing key.
-  // Set ADMIN_STRICT=true and ADMIN_KEY in .env for production hardening.
-  if (process.env.ADMIN_STRICT === "true") {
-    const expected = process.env.ADMIN_KEY ?? "";
-    if (!expected) return false;
-    return adminKey === expected;
-  }
-  return true;
-}
-
-/** For API routes (questions, etc.). */
-export function verifyAdminKey(adminKey: string | null): boolean {
-  return requireAdmin(adminKey);
-}
-
 export async function adminAction(
   adminKey: string | null,
   action: string,
-  payload?: { timerSec?: number }
+  payload?: { timerSec?: number; enabled?: boolean }
 ): Promise<{ ok: true } | { error: string }> {
-  if (!requireAdmin(adminKey)) return { error: zh.apiForbidden };
+  if (!verifyAdminKey(adminKey)) return { error: zh.apiForbidden };
 
   const g = getGameRow();
   if (!g) return { error: zh.apiGameNotInit };
@@ -293,6 +315,10 @@ export async function adminAction(
         .run(sec);
       break;
     }
+    case "set-debug-reregister": {
+      setDebugReregister(payload?.enabled === true);
+      break;
+    }
     case "lobby":
       sqlite
         .prepare(
@@ -301,7 +327,7 @@ export async function adminAction(
         .run();
       break;
     case "open": {
-      if (g.phase === "open") return { error: zh.apiAlreadyAnswering };
+      if (g.phase === "countdown") return { error: zh.apiAlreadyAnswering };
       if (g.current_q < 1) {
         if (!getQuestion(1)) return { error: zh.apiNoQuestion };
         sqlite.prepare("UPDATE player SET submitted_this_round = 0").run();
@@ -346,6 +372,16 @@ export async function adminAction(
         )
         .run();
       break;
+    case "reset-questions": {
+      if (!getQuestion(1)) return { error: zh.apiNoQuestion };
+      sqlite.prepare("UPDATE player SET submitted_this_round = 0").run();
+      sqlite
+        .prepare(
+          "UPDATE game SET current_q = 1, phase = 'closed', countdown_end = NULL, opened_at = NULL WHERE id = 1"
+        )
+        .run();
+      break;
+    }
     default:
       return { error: zh.apiUnknownAction };
   }

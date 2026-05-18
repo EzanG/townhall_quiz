@@ -9,6 +9,7 @@ export type GameRow = {
   countdown_end: string | null;
   /** ISO time when the answer window started (countdown begins; submit latency from here). */
   opened_at: string | null;
+  debug_reregister: number;
 };
 
 export type PlayerRow = {

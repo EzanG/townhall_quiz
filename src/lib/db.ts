@@ -26,6 +26,11 @@ function ensureSchemaColumns() {
   if (!gameCols.some((c) => c.name === "opened_at")) {
     sqlite.exec("ALTER TABLE game ADD COLUMN opened_at TEXT");
   }
+  if (!gameCols.some((c) => c.name === "debug_reregister")) {
+    sqlite.exec(
+      "ALTER TABLE game ADD COLUMN debug_reregister INTEGER NOT NULL DEFAULT 0"
+    );
+  }
 }
 ensureSchemaColumns();
 

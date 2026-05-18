@@ -54,6 +54,11 @@ if (!hasColumn("player", "total_correct_time_ms")) {
 if (!hasColumn("game", "opened_at")) {
   db.exec("ALTER TABLE game ADD COLUMN opened_at TEXT");
 }
+if (!hasColumn("game", "debug_reregister")) {
+  db.exec(
+    "ALTER TABLE game ADD COLUMN debug_reregister INTEGER NOT NULL DEFAULT 0"
+  );
+}
 
 db.close();
 console.log(`Database ready at ${dbPath}`);
